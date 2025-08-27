@@ -137,6 +137,15 @@ export class NumberWithUnit {
     return this.unit > other.unit || (this.unit === other.unit && this.number > other.number)
   }
 
+  // 小于比较操作
+  lessThan(other) {
+    if (this.unit === other.unit) {
+      return this.number < other.number
+    }
+    
+    return this.unit < other.unit || (this.unit === other.unit && this.number < other.number)
+  }
+
   // 检查是否可以进行单位进位
   canCarry() {
     return this.number >= 10000

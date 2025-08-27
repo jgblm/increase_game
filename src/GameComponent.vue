@@ -43,7 +43,7 @@ const incomePerSecond = computed(() => {
 
   // 检查是否在速度提升期间
   if (Date.now() < speedBoostEndTime.value) {
-    baseIncome *= 2 // 2倍速度
+    baseIncome = baseIncome.multiply(2) // 2倍速度
   }
 
   return baseIncome
@@ -104,22 +104,30 @@ const loadGame = () => {
       const decryptedData = decryptData(savedData)
       console.log('Loaded data:', decryptedData)
       if (decryptedData) {
-        coins.value = NumberWithUnit.fromObject(decryptedData.coins) || new NumberWithUnit(0, 0)
+        // 解析解密后的数据（可能是字符串或对象）
+        let parsedData
+        if (typeof decryptedData === 'string') {
+          parsedData = JSON.parse(decryptedData)
+        } else {
+          parsedData = decryptedData
+        }
+        
+        coins.value = NumberWithUnit.fromObject(parsedData.coins) || new NumberWithUnit(0, 0)
         console.log('Loaded coins:', coins.value)
 
         // 加载速度提升结束时间
-        speedBoostEndTime.value = decryptedData.speedBoostEndTime || 0
+        speedBoostEndTime.value = parsedData.speedBoostEndTime || 0
 
         // 加载商店基础值
-        shopBaseValue.value = NumberWithUnit.fromObject(decryptedData.shopBaseValue) || new NumberWithUnit(1, 0)
+        shopBaseValue.value = NumberWithUnit.fromObject(parsedData.shopBaseValue) || new NumberWithUnit(1, 0)
         // 处理加载数据异常
         if (shopBaseValue.value.number <= 0) {
           shopBaseValue.value = new NumberWithUnit(1, 0)
         }
         console.log('Loaded shopBaseValue:', shopBaseValue.value)
         // 确保物品结构正确
-        if (decryptedData.items && Array.isArray(decryptedData.items) && decryptedData.items.length === 3) {
-          items.value = decryptedData.items.map((item, index) => {
+        if (parsedData.items && Array.isArray(parsedData.items) && parsedData.items.length === 3) {
+          items.value = parsedData.items.map((item, index) => {
             return {
               id: index + 1,
               name: '商品',
@@ -130,7 +138,7 @@ const loadGame = () => {
         }
 
         // 加载商店升级次数
-        shopUpgradeLevel.value = decryptedData.shopUpgradeLevel || 0
+        shopUpgradeLevel.value = parsedData.shopUpgradeLevel || 0
 
         // 持续检查商店升级条件直到不满足为止
         const checkAndUpgradeShop = () => {
@@ -154,17 +162,19 @@ const loadGame = () => {
 const saveGame = () => {
   try {
     const gameState = {
-      coins: coins.value,
-      items: items.value,
+      coins: { number: coins.value.number, unit: coins.value.unit },
+      items: items.value.map(item => ({ ...item })),
       timestamp: Date.now(), // 添加时间戳
       speedBoostEndTime: speedBoostEndTime.value, // 保存速度提升结束时间
       shopUpgradeLevel: shopUpgradeLevel.value, // 保存商店升级次数
-      shopBaseValue: shopBaseValue.value // 保存商店基础值
+      shopBaseValue: { number: shopBaseValue.value.number, unit: shopBaseValue.value.unit } // 保存商店基础值
     }
 
-    const encryptedData = encryptData(gameState)
+    const encryptedData = encryptData(JSON.stringify(gameState))
     if (encryptedData) {
       localStorage.setItem(STORAGE_KEY, encryptedData)
+    } else {
+      console.warn('Failed to encrypt game data')
     }
   } catch (e) {
     console.error('保存游戏状态失败:', e)
@@ -260,39 +270,39 @@ const resetGame = () => {
 
 // 大轮盘抽奖
 const doLuckyDraw = () => {
-  if (coins.value < luckyDrawCost.value) {
+  if (coins.value.lessThan(new NumberWithUnit(luckyDrawCost.value, 0))) {
     luckyDrawResult.value = '金币不足，无法抽奖！'
     isLuckyDrawVisible.value = true
     return
   }
 
-  coins.value -= luckyDrawCost.value
+  coins.value = coins.value.subtract(new NumberWithUnit(luckyDrawCost.value, 0))
 
   // 抽奖选项和概率（均等概率，各1/7）
   const options = [
     {
       name: '2倍当前金币', action: () => {
-        coins.value *= 2
+        coins.value = coins.value.multiply(2)
       }
     },
     {
       name: '5倍当前金币', action: () => {
-        coins.value *= 5
+        coins.value = coins.value.multiply(5)
       }
     },
     {
       name: '10倍当前金币', action: () => {
-        coins.value *= 10
+        coins.value = coins.value.multiply(10)
       }
     },
     {
       name: '金币清0', action: () => {
-        coins.value = 0
+        coins.value = new NumberWithUnit(0, 0)
       }
     },
     {
       name: '金币减半', action: () => {
-        coins.value = Math.floor(coins.value / 2)
+        coins.value = coins.value.multiply(0.5)
       }
     },
     {
@@ -323,14 +333,22 @@ const doLuckyDraw = () => {
 
 // 测试运气按钮
 const testLuck = () => {
+  console.log('Testing luck...')
   // 50%概率获得3小时2倍收益
-  if (Math.random() < 0.5) {
+  const isLucky = Math.random() < 0.5
+  console.log('Is lucky:', isLucky)
+  
+  if (isLucky) {
     speedBoostEndTime.value = Date.now() + (3 * 60 * 60 * 1000) // 3小时
     luckyDrawResult.value = '恭喜！获得3小时2倍收益加成！'
+    console.log('Lucky result:', luckyDrawResult.value)
   } else {
     luckyDrawResult.value = '运气不佳，再接再厉！'
+    console.log('Unlucky result:', luckyDrawResult.value)
   }
+  
   isLuckyDrawVisible.value = true
+  console.log('Dialog visibility:', isLuckyDrawVisible.value)
 
   // 保存游戏状态
   saveGame()
@@ -338,8 +356,11 @@ const testLuck = () => {
 
 // 关闭抽奖结果弹窗
 const closeLuckyDraw = () => {
+  console.log('Closing lucky draw dialog')
   isLuckyDrawVisible.value = false
   luckyDrawResult.value = ''
+  console.log('Dialog visibility after close:', isLuckyDrawVisible.value)
+  console.log('Lucky draw result after close:', luckyDrawResult.value)
 }
 
 // 初始化游戏
